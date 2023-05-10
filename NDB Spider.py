@@ -14,6 +14,7 @@ class NDB_Spider(scrapy.Spider):
   # start_requests method
   def start_requests(self):
     urls='http://ndbserver.rutgers.edu/service/ndb/atlas/gallery/dna?polType=all&protFunc=all&strGalType=dna&stFeature=all&expMeth=all&galType=table&start=0&limit=50'
+    # longurl = http://ndbserver.rutgers.edu/service/ndb/atlas/gallery/dna?polType=all&protFunc=all&strGalType=dna&stFeature=all&expMeth=all&galType=table&start=0&limit=8780
     yield scrapy.Request(url = urls , callback = self.parse_front)
 
   #Aplicando los parametros de seleccion
@@ -43,8 +44,6 @@ NDB_dict = dict()
 process = CrawlerProcess()
 process.crawl(NDB_Spider)
 process.start()    
-
-print(len(NDB_dict.keys()))
 
 for keys,values in NDB_dict.items():
   print (keys, values)

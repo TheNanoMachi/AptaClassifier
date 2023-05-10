@@ -1,3 +1,5 @@
+# this is for the results of the Aptagen Spider.
+
 filePath = "result3.txt"
 
 numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."]
@@ -68,7 +70,7 @@ with open(filePath, "r+", encoding="utf-8") as f:
                     thymine += 1
                 case "U":
                     uracil += 1
-        percentages = [adenosine , cytosine, glutamine, thymine, uracil]
+        percentages = [float(adenosine) , float(cytosine), float(glutamine), float(thymine), float(uracil)]
         for i in range(len(percentages)):
             percentages[i] = round(percentages[i] / len(sequence), 4)
         aptamers[sequence] = tuple(properties + percentages)
