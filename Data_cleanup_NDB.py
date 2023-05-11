@@ -1,4 +1,4 @@
-filePath = "NDB.txt"
+filePath = "proteins_raw.txt"
 
 bases = ["A", "T", "C", "G", "U"]
 sequences = []
@@ -15,7 +15,7 @@ with open(filePath, "r+", encoding="utf-8") as file:
         
         sequences.append(sequence.rstrip("A"))
 
-with open("NDB_cleaned.txt", "w+", encoding="utf-8") as file:
+with open("NDB_cleaned_1.txt", "w+", encoding="utf-8") as file:
     for s in sequences:
         file.write(s)
         file.write("\n")
