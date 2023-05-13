@@ -51,4 +51,3 @@ with open('aptagen_sequences_dna_only.txt', 'w+', encoding='utf-8') as result:
     result.write(", ")
     result.write(", ".join(v))
     result.write('\n\n')
-  result.close()

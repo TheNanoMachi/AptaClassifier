@@ -1,28 +1,42 @@
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn import svm
-from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 
-aptamerPath = "combined_sequences.txt"
+aptamerPath = "combined_sequences"
 results = []
 
 classifier = svm.SVC(C=10,gamma=0.01)
-categories = ["0", "1"]
 
-x_train, x_test, y_train, y_test = 0, 0, 0, 0
+df = []
+
+with open("sequences_with_classification.csv", "r+", encoding="utf-8") as csv:
+    data = csv.read().split(",")
+    for i in data:
+        if i == "1" or i == "0":
+            df.append(i)
 
 with open(aptamerPath, "r+", encoding="utf-8", errors="ignore") as file:
     vectorizer = CountVectorizer(analyzer="char", ngram_range=(6, 6), lowercase=False)
     x = vectorizer.fit_transform(file)
-    results += vectorizer.get_feature_names_out().tolist()
-    x_train, x_test, y_train, y_test = train_test_split(results, train_size=0.8)
-    # results = [i for i in results if "\n" not in i]
+    x_train, x_test, y_train, y_test = train_test_split(x, df)
     classifier.fit(x_train, y_train)
+    y_pred = classifier.predict(x_test)
 
-# for i in results:
-#     print(i)
+    mismatch = 0
+    fp = 0
+    fn = 0
+    for i in range(len(y_pred)):
+        match (int(y_pred[i]) - int(y_test[i])):
+            case 1:
+                fp += 1
+                mismatch += 1
+            case -1:
+                fn += 1
+                mismatch += 1    
 
-with open("sequences.txt", "r+", encoding="utf-8") as file:
-    vectorizer = CountVectorizer(analyzer="char", ngram_range=(6, 6), lowercase=False)
-    print(classifier.predict(vectorizer.fit_transform(file)))
+    
+    print("accuracy", 1 - mismatch / len(y_pred),
+        "false positives", fp,
+        "false positive rate", fp / len(y_pred),
+        "false negatives", fn,
+        "false negative rate", fn / len(y_pred))
