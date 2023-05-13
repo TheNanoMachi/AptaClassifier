@@ -4,7 +4,7 @@ bases = ["A", "T", "C", "G", "U"]
 aptamers = list()
 sequences = list()
 
-results = "cleaned_data1.csv"
+results = "cleaned_data_1.csv"
 filePath = "proteins_raw.txt"
 
 sequences = []
@@ -20,10 +20,11 @@ with open(filePath, "r+", encoding="utf-8") as file:
                     sequence += i
         sequences.append(sequence.rstrip("A"))
 
-with open(results, "a+", encoding="utf-8") as file:
+with open(results, "w+", encoding="utf-8") as file:
     for s in sequences:
-        file.write(s)
-        file.write(",0,\n")
+        if len(s) > 0:
+            file.write(s)
+            file.write(",0,\n")
 
 sequences = []
 filePath = "aptagen_sequences_dna_only.txt"
