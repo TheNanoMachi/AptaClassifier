@@ -23,16 +23,5 @@ with open(aptamerPath, "r+", encoding="utf-8", errors="ignore") as file:
     x_train, x_test, y_train, y_test = train_test_split(x, df)
     classifier.fit(x_train, y_train)
     y_pred = classifier.predict(x_test)
-    mismatch = 0
-    fp = 0
-    fn = 0
-    for i in range(len(y_pred)):
-        match (int(y_pred[i]) - int(y_test[i])):
-            case 1:
-                fp += 1
-                mismatch += 1
-            case -1:
-                fn += 1
-                mismatch += 1
     print(metrics.accuracy_score(y_pred=y_pred, y_true=y_test))
     print(metrics.balanced_accuracy_score(y_true=y_test, y_pred=y_pred))
