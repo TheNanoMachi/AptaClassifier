@@ -1,30 +1,34 @@
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn import svm
+from sklearn.model_selection import cross_validate
+from sklearn.model_selection import cross_val_score
 import xgboost
 from sklearn import metrics
 from random import randint
 import numpy as np
 import copy
-# import ViennaRNA
-
+import RNA
+from sklearn.model_selection import GridSearchCV
+import matplotlib.pyplot as plt
 
 aptamerPath = "combined_sequences"
 sequences = "cleaned_data.csv"
 amt = 250
 total = 0
-
+do_param_search = False
 df = []
 dnaSequences = []
 aptaProperties = dict()
 dnaProperties = []
 knownIndexes = []
 
-rf = RandomForestClassifier() # RandomForest
-xgb = xgboost.XGBClassifier() # XGBoost
-svm1 = svm.SVC(C=10,gamma=0.01) # modified SVM
-svm2 = svm.SVC() # unmodified SVM
+# rf = RandomForestClassifier() # RandomForest
+# scale_pos_weight = total_negative_examples / total_positive_examples
+# xgb = xgboost.XGBClassifier(scale_pos_weight=20) # XGBoost
+# svm1 = svm.SVC(C=10,gamma=0.01) # modified SVM
+# svm2 = svm.SVC() # unmodified SVM
 
 def computeMT(seq: str) -> float:
     sequenceLength = len(seq)
@@ -57,7 +61,9 @@ with open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") a
     vectorizer = CountVectorizer(analyzer="char", ngram_range=(6, 6), lowercase=False)
     dnaSequences = dnaData + aptamerData
     for i in dnaSequences:
-        dnaProperties.append([computeMT(i)])
+        _, mfe = RNA.fold(i)
+        dnaProperties.append([computeMT(i), mfe])
+    print("sequence properties computed")
     amt = len(aptamerData)
     while len(knownIndexes) < len(dnaData):
         current_round_count = 0
@@ -76,28 +82,35 @@ with open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") a
     X = np.column_stack((X.toarray(), dnaProperties)) # type: ignore
     dnaProperties = np.hstack(dnaProperties)
     df = [0] * len(dnaData) + [1] * len(aptamerData)
-    results = [[], [], [], []]
-    resDict = dict()
-    for _ in range(10):
-        x_train, x_test, y_train, y_test = train_test_split(X, df)
-        rf.fit(x_train, y_train)
-        xgb.fit(x_train, y_train)
-        svm1.fit(x_train, y_train)
-        svm2.fit(x_train, y_train)
-        rf_y_pred = rf.predict(x_test)
-        xgb_y_pred = xgb.predict(x_test)
-        svm1_y_pred = svm1.predict(x_test)
-        svm2_y_pred = svm2.predict(x_test)
-        results[0].append(metrics.balanced_accuracy_score(y_true=y_test, y_pred=rf_y_pred))
-        results[1].append(metrics.balanced_accuracy_score(y_true=y_test, y_pred=xgb_y_pred))
-        results[2].append(metrics.balanced_accuracy_score(y_true=y_test, y_pred=svm1_y_pred))
-        results[3].append(metrics.balanced_accuracy_score(y_true=y_test, y_pred=svm2_y_pred))
-    resDict["RF"] = tuple(results[0])
-    resDict["XGBoost"] = tuple(results[1])
-    resDict["SVM1"] = tuple(results[2])
-    resDict["SVM2"] = tuple(results[3])
-    for k, v in resDict.items():
-        print(k, ":", np.average(v), np.std(v))
-
+    if do_param_search:
+        print("Searching for best weights")
+        weights = [1, 2, 5, 10, 20, 50, 100]
+        params = dict(scale_pos_weight=weights)
+        cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=1)
+        xgb = xgboost.XGBClassifier()
+        gridSearch = GridSearchCV(estimator=xgb, param_grid=params, n_jobs=None, cv=cv, scoring='roc_auc')
+        grid_result = gridSearch.fit(X, df)
+        print("Best Score: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+        means = grid_result.cv_results_['mean_test_score']
+        stds = grid_result.cv_results_['std_test_score']
+        params = grid_result.cv_results_['params']
+        for mean, std, param in zip(means, stds, params):
+            print("Mean: %f StDev: %f Config: %r" %(mean, std, param))
+        best_weight = grid_result.best_params_['scale_pos_weight']
+    else:
+        best_weight = round(len(dnaData) / len(aptamerData))
+    print("starting algorithm training")
+    xgb2 = xgboost.XGBClassifier(scale_pos_weight=best_weight)
+    cvs = cross_validate(xgb2, X, df, cv=10, scoring='balanced_accuracy', return_train_score=True)
+    print("finished training, printing results")
+    for k, v in cvs.items():
+        if k == "fit_time" or k == "score_time":
+            continue
+        else:
+            print(k, "average", np.mean(v), "standard deviation", np.std(v))
+        print(k, v)
+        plt.plot(range(len(v)), v, label=k)
+    plt.legend()
+    plt.show()
     
 
