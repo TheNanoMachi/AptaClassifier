@@ -1,5 +1,6 @@
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split, cross_validate, GridSearchCV, StratifiedShuffleSplit, learning_curve
+from sklearn.feature_selection import SelectKBest, chi2, RFECV
+from sklearn.model_selection import RepeatedStratifiedKFold, train_test_split, cross_validate, GridSearchCV, StratifiedShuffleSplit, learning_curve, StratifiedKFold
 import xgboost
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, classification_report, get_scorer_names
 from sklearn.ensemble import RandomForestClassifier
@@ -13,6 +14,8 @@ from sys import exit
 import pandas as pd
 import time
 import shap
+from functools import reduce
+import re
 
 aptamerPath = "combined_sequences"
 sequences = "cleaned_data.csv"
@@ -25,8 +28,27 @@ aptaProperties = dict()
 dnaProperties = []
 validationProperties = []
 
-
 earlyExit = True
+
+# regex for finding loops: \(\.*\)
+
+def countLoops(structure: str) -> list[int]:
+    # hairpins
+    hairpins = len(re.findall(r'\(\.*\)', structure))
+
+    # internal loops
+    forwardMatches =  re.findall(r"(?=(\(\.+\())", structure)
+    reverseMatches =  re.findall(r"(?=(\)\.+\)))", structure)
+
+    internal_loops = 0
+
+    for i in forwardMatches:
+        for j in reverseMatches:
+            if len(i) == len(j):
+                internal_loops += 1
+                break
+
+    return [hairpins, internal_loops] # type: ignore
 
 def computeMT(seq: str) -> float:
     sequenceLength = len(seq)
@@ -68,7 +90,7 @@ def preprocessing(sequences: list[str], vec: CountVectorizer, special: int, max_
 
 # take a list of labels and a list of values, and return a dictionary whose values are any values in values >= threshold
 # and whose keys are their associated labels. labels and values should have the same length.
-def pack_and_sort_descending(labels: list[str], values: list[float | int], threshold: float) -> list[list[str | float | int]]:
+def pack_and_sort_descending(labels: list[str], values: list[float] | list[int], threshold: float) -> list[list[str] | list[float] | list[int]]:
     important_values = []
     important_labels = []
     for i in range(len(values)):
@@ -83,6 +105,14 @@ def pack_and_sort_descending(labels: list[str], values: list[float | int], thres
         k.append(i[0])
         v.append(i[1])
     return [k, v]
+
+def count_features(feature: str, appearances: list[list[str]]) -> int:
+    result = 0
+    for appearance_list in appearances:
+        for name in appearance_list:
+            if feature == name:
+                result += 1
+    return result
 
 with open("structures3.txt", "r+") as structures2, open("dna_aptamers.txt", "r+") as valset, open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") as dnas, open("cleaned_data.csv", "r+") as csv, open("structures.txt", "r+") as structures:
     # rewrite as a function that takes a file or string list, so I don't have to keep adding more vectorizers.
@@ -111,12 +141,14 @@ with open("structures3.txt", "r+") as structures2, open("dna_aptamers.txt", "r+"
     dnaSequences = dnaData + aptamerData + v_train
     for i in dnaSequences:
         ss, mfe = RNA.fold(i)
-        dnaProperties.append([computeMT(i), mfe])
+        dnaProperties.append([computeMT(i), mfe] + countLoops(ss))
+        # dnaProperties.append([mfe])
         sL.append(ss)
     for i in v_test:
         ss, mfe = RNA.fold(i)
         sL2.append(ss)
-        validationProperties.append([computeMT(i), mfe])
+        validationProperties.append([computeMT(i), mfe] + countLoops(ss))
+        # validationProperties.append([mfe])
     print("sequence properties computed")
     X = preprocessing(dnaSequences, vectorizer, len(dnaData))
     vectorizer2 = CountVectorizer(analyzer="char", ngram_range=(6, 6), lowercase=False, max_features=len(vectorizer.get_feature_names_out()))
@@ -146,13 +178,17 @@ with open("structures3.txt", "r+") as structures2, open("dna_aptamers.txt", "r+"
     structs2 = np.vstack(structs2.toarray())
 
     X = np.column_stack((X.toarray(), structs)) # type: ignore
-    X = np.column_stack((X, dnaProperties)) # type: ignore
+    X = np.column_stack((X, dnaProperties))
     X2 = np.column_stack((X2.toarray(), structs2)) # type: ignore
     X2 = np.column_stack((X2, validationProperties))
 
+    # X = np.column_stack((X.toarray(), dnaProperties))
+    # X2 = np.column_stack((X2.toarray(), validationProperties))
+
     column_labels = vectorizer3.get_feature_names_out().tolist()
     column_labels += ssV3.get_feature_names_out().tolist()
-    column_labels += ["mp", "mfe"]
+    column_labels += ["mp", "mfe", "hairpins", "internal_loops"]
+    # column_labels += ["mfe"]
 
     X = pd.DataFrame(X, columns=column_labels)    
 
@@ -162,8 +198,6 @@ with open("structures3.txt", "r+") as structures2, open("dna_aptamers.txt", "r+"
     print("starting algorithm training")
     
     x_train, x_test, y_train, y_test = train_test_split(X, y, train_size=0.6)
-
-    # eval_set = [(x_train, y_train), (x_test, y_test)]
 
     eval_metric = ["auc", "logloss", "error"]
 
@@ -175,38 +209,101 @@ with open("structures3.txt", "r+") as structures2, open("dna_aptamers.txt", "r+"
 
     xgb2.fit(x_train, y_train)
 
-    # result = permutation_importance(xgb2, x_test, y_test, scoring=scoring, n_repeats=5, random_state=33)
-
-    # importances = result[scoring[0]]["importances_mean"]
-
     print("finished training, printing results")
-
-    print(f"time elapsed: {(time.time() - program_start): .3f} seconds")
-
-    
+  
     y_pred = xgb2.predict(x_test)
 
     print(f"accuracy: {balanced_accuracy_score(y_pred=y_pred, y_true=y_test): .5f}")
 
-    # xgb_gain = xgb2.get_booster().get_score(importance_type='gain')
-    # xgb_feature = pack_and_sort_descending(list(xgb_gain.keys()), list(xgb_gain.values()), 0.0001) # type: ignore
-    shap_explainer = shap.Explainer(xgb2)
-    shap_test = shap_explainer(x_test)
-    
-    shap.plots.bar(shap_test)
-    # perm_importance = pack_and_sort_descending(column_labels, importances, 0.0001)
-    
-    # plt.subplot(1, 2, 1)
-    # plt.bar(perm_importance[0], perm_importance[1])
-    # plt.subplot(1, 2, 2)
-    # fig = plt.figure()
-    # plt.bar(xgb_feature[0], xgb_feature[1])
-    # plt.xticks(rotation=45, ha='right')
-    # plt.tight_layout()
-    # fig.tight_layout()
-    # plt.show()
+    booster = xgb2.get_booster()
 
+    importance_types = ['weight', 'gain', 'total_gain', 'total_cover']
 
+    scores = dict()
+
+    for importance_type in importance_types:
+        scores[importance_type] = booster.get_score(importance_type=importance_type)
+
+    feature_names = []
+
+    scoring = ['balanced_accuracy', 'f1', 'roc_auc']
+
+    permute_importances = True
+
+    if permute_importances:
+        results = permutation_importance(xgb2, x_train, y_train, n_repeats=3, 
+                                         max_samples=0.4, scoring=scoring, n_jobs=4)
+
+        for result in results.values():
+            feature_names.append(pack_and_sort_descending(column_labels, result.importances_mean, 0))
+    else:
+        results = dict()
+
+    for score in scores.values():
+        feature_names.append(pack_and_sort_descending(list(score.keys()), list(score.values()), 0))
+    
+    # top_n = min(list(map(lambda x: len(x[0]), feature_names)))
+
+    top_appearances = []
+
+    for feature in feature_names:
+        # names = []
+        # for i in range(top_n):
+        #     names.append(feature[0][i])
+        top_appearances += [feature[0]]
+
+    # print(top_appearances)
+    
+    print(", ".join(list(scores.keys()) + list(results.keys())))
+    # print(list(reduce(lambda x, y: x & y, (set(i) for i in top_appearances))))
+
+    features_found = list(reduce(lambda x, y: x | y, (set(i) for i in top_appearances)))
+
+    frequencies = list(map(lambda x: count_features(x, top_appearances), features_found))
+
+    freq_dict = pack_and_sort_descending(features_found, frequencies, 0)
+
+    for i in range(len(freq_dict[0])):
+        print(freq_dict[0][i], freq_dict[1][i])
+
+    # no mp: 0.97690
+    # mp: 0.97709~0.98474
+
+    # xgb_feature = pack_and_sort_descending(list(xgb_gain.keys()), list(xgb_gain.values()), 0.0001) # type: ignore   
+
+    # shap_explainer = shap.Explainer(xgb2)
+    # shap_test = shap_explainer(x_test)
+
+    # print(shap_test.values.shape)
+    # print(len(column_labels))
+
+    # feature_values = []
+
+    # for i in range(shap_test.values.shape[1]):
+    #     feature = []
+    #     for j in range(shap_test.values.shape[0]):
+    #         feature.append(shap_test.values[j][i])
+    #     feature_values.append(feature)
+
+    # for i in range(len(feature_values)):
+    #     if np.average(feature_values[i]) != 0:
+    #         print(column_labels[i], np.absolute(np.average(feature_values[i])))
+    
+    # shap.plots.bar(shap_test)
+
+    # xgb3 = xgboost.XGBClassifier(scale_pos_weight=best_weight)
+
+    # cv = StratifiedKFold(5)
+
+    # rfecv = RFECV(estimator=xgb3, step=500, cv=cv, scoring="balanced_accuracy", min_features_to_select=1)
+
+    # print("created RFECV model")
+
+    # rfecv.fit(X, y)
+
+    # print(f"Optimal number of features: {rfecv.n_features_}")
+
+    print(f"time elapsed: {(time.time() - program_start): .3f} seconds")
 
 
 
