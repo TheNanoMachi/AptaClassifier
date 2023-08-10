@@ -1,8 +1,6 @@
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import train_test_split
 import xgboost
-from random import randint
-import copy
 import RNA
 import pandas as pd
 import time
@@ -13,6 +11,10 @@ earlyExit = True
 permute_importances = True
 calculate_importances = False
 vectorize = False
+
+# ===
+# assorted functions which may or may not be required.
+# ===
 
 def countLoops(structure: str) -> list[int]:
     # hairpins
@@ -60,25 +62,6 @@ def computeProperties(sequences: list[str]) -> list:
         sequence_properties.append([computeMT(i), mfe] + countLoops(ss))
     return sequence_properties
 
-def preprocessing(sequences: list[str], vec: CountVectorizer, special: int):
-    knownIndexes = []
-    amt = len(sequences)
-    while len(knownIndexes) < special:
-        current_round_count = 0
-        dnaSequences2 = copy.deepcopy(sequences)
-        while current_round_count < amt:
-            i = randint(0, special - 1)
-            if i not in knownIndexes:
-                dnaSequences2.append(sequences[i])
-                knownIndexes.append(i)
-                current_round_count += 1
-            if len(knownIndexes) == special:
-                break
-        vec = vec.fit(dnaSequences2)
-    return vec.transform(sequences)
-
-# take a list of labels and a list of values, and return a dictionary whose values are any values in values >= threshold
-# and whose keys are their associated labels. labels and values should have the same length.
 def pack_and_sort_descending(labels: list[str], values: list[float] | list[int], threshold: float) -> list[list[str] | list[float] | list[int]]:
     important_values = []
     important_labels = []
@@ -95,13 +78,9 @@ def pack_and_sort_descending(labels: list[str], values: list[float] | list[int],
         v.append(i[1])
     return [k, v]
 
-def count_features(feature: str, appearances: list[list[str]]) -> int:
-    result = 0
-    for appearance_list in appearances:
-        for name in appearance_list:
-            if feature == name:
-                result += 1
-    return result
+# ===
+# main program
+# ===
 
 with open("validated.txt", "r+") as valset, open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") as dnas:
     dnaProperties = []
@@ -151,6 +130,3 @@ with open("validated.txt", "r+") as valset, open("aptamers12.txt", "r+") as apta
         print(validation_set[i], results[i][0][0], results[i][0][1], result)
 
     print(f"time elapsed: {(time.time() - program_start): .3f} seconds")
-
-
-
