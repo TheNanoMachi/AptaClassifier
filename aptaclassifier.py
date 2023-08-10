@@ -1,10 +1,10 @@
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import train_test_split
 import xgboost
 import RNA
 import pandas as pd
 import time
 import re
+import streamlit
 
 # program flags
 earlyExit = True
@@ -119,7 +119,7 @@ with open("validated.txt", "r+") as valset, open("aptamers12.txt", "r+") as apta
 
     print("finished training, printing results")
 
-    print("validated (true aptamers) results:")
+    print("results:")
 
     features = list(map(lambda x: pd.DataFrame(computeProperties([x]), columns=column_labels), validation_set))
 
