@@ -89,8 +89,7 @@ def predict_aptamers(model: xgboost.XGBClassifier, data: list[str]) -> list[list
     resultList = []
     
     for i in range(len(results)):
-        result = 0 if results[i][0][0] > results[i][0][1] else 1
-        resultList.append([data[i], results[i][0][0], results[i][0][1], result])
+        resultList.append([data[i], results[i][0][0], results[i][0][1], "Non-aptamer" if results[i][0][0] > results[i][0][1] else "Aptamer"])
     
     return resultList
 
@@ -100,7 +99,7 @@ def predict_aptamers(model: xgboost.XGBClassifier, data: list[str]) -> list[list
 
 st.title("Aptamer Classifier")
 st.header("README")
-st.text("This is an sequence classifier for detection of aptamers. It supports two modes: text input and file input.\nUploaded files should have one sequence on each line.")
+st.text("This is an sequence classifier for detection of aptamers. It supports two modes: text input and file input.\nUploaded files should have one sequence on each line.\nAn example output is below.")
 
 with open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") as dnas:
     dnaProperties = []
