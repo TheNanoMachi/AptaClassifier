@@ -12,10 +12,8 @@ permute_importances = True
 calculate_importances = False
 vectorize = False
 
-# get streamlit import file button
-upload_text = st.text_area("Add sequences here. One per line.")
-upload_file = st.file_uploader("Import Sequences (*.txt only)", type="txt")
-
+sample_sequence = ["TGGCAAGAGGGTGTGCTTAAGGTGGACACGGTGGCTTAG"]
+categories = ["Sequence", "Negative Confidence", "Positive Confidence", "Prediction"]
 
 # ===
 # assorted functions which may or may not be required.
@@ -100,6 +98,9 @@ def predict_aptamers(model: xgboost.XGBClassifier, data: list[str]) -> list[list
 # main program (model training)
 # ===
 
+st.title("Aptamer Classifier")
+st.header("README")
+st.text("This is an sequence classifier for detection of aptamers. It supports two modes: text input and file input.\nUploaded files should have one sequence on each line.")
 
 with open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") as dnas:
     dnaProperties = []
@@ -130,12 +131,13 @@ with open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") a
 
     xgb2.fit(x_train, y_train)
 
-    print("model created")
+    st.write(pd.DataFrame(predict_aptamers(xgb2, list(filter(lambda x: len(x) > 0, sample_sequence))), columns=categories))
 
 
-# model application
-# TODO: #1 fix issue of parallel cases
-categories = ["Sequence", "Negative Confidence", "Positive Confidence", "Prediction"]
+upload_text = st.text_area("Add sequences here. One per line.")
+upload_file = st.file_uploader("Import Sequences (*.txt only)", type="txt")
+
+
 
 resultTable = None
 resultTable2 = None
