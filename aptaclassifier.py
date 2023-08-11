@@ -2,7 +2,6 @@ from sklearn.model_selection import train_test_split
 import xgboost
 import RNA
 import pandas as pd
-import time
 import re
 import streamlit as st
 from io import StringIO
@@ -14,7 +13,9 @@ calculate_importances = False
 vectorize = False
 
 # get streamlit import file button
+upload_text = st.text_area("Add sequences here. One per line.")
 upload_file = st.file_uploader("Import Sequences (*.txt only)", type="txt")
+
 
 # ===
 # assorted functions which may or may not be required.
@@ -82,24 +83,32 @@ def pack_and_sort_descending(labels: list[str], values: list[float] | list[int],
         v.append(i[1])
     return [k, v]
 
+def predict_aptamers(model: xgboost.XGBClassifier, data: list[str]) -> list[list[str | float | int]]:
+    features = list(map(lambda x: pd.DataFrame(computeProperties([x]), columns=column_labels), data))
+
+    results = list(map(lambda x: model.predict_proba(x), features))
+
+    resultList = []
+    
+    for i in range(len(results)):
+        result = 0 if results[i][0][0] > results[i][0][1] else 1
+        resultList.append([data[i], results[i][0][0], results[i][0][1], result])
+    
+    return resultList
+
 # ===
-# main program
+# main program (model training)
 # ===
 
-with open("validated.txt", "r+") as valset, open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") as dnas:
+
+with open("aptamers12.txt", "r+") as aptamers, open("NDB_cleaned_1.txt", "r+") as dnas:
     dnaProperties = []
-
-    stringIO = StringIO(upload_file.getvalue().decode("utf-8")) # type: ignore
-
-    program_start = time.time()
-
-    validation_set = list(filter(lambda x: len(x) > 0, stringIO.read().split("\n")))
     
     dnaData = list(filter(lambda x: len(x) > 0, dnas.read().split("\n")))
 
     aptamerData = list(filter(lambda x: len(x) > 0, aptamers.read().split("\n")))
 
-    dnaSequences = dnaData + aptamerData + validation_set
+    dnaSequences = dnaData + aptamerData
 
     for i in dnaSequences:
         ss, mfe = RNA.fold(i)
@@ -109,31 +118,36 @@ with open("validated.txt", "r+") as valset, open("aptamers12.txt", "r+") as apta
 
     X = pd.DataFrame(dnaProperties, columns=column_labels)
 
-    y = [0] * len(dnaData) + [1] * (len(aptamerData) + len(validation_set))
+    y = [0] * len(dnaData) + [1] * (len(aptamerData))
     
     x_train, x_test, y_train, y_test = train_test_split(X, y, train_size=0.6)
 
-    best_weight = round(len(dnaData) / (len(aptamerData) + len(validation_set)))
+    best_weight = round(len(dnaData) / (len(aptamerData)))
+
+    global xgb2
 
     xgb2 = xgboost.XGBClassifier(scale_pos_weight=best_weight)
 
     xgb2.fit(x_train, y_train)
 
-    st.write(f"time elapsed: {(time.time() - program_start): .3f} seconds")
+    print("model created")
 
-    st.write(f"results for file {upload_file.name}:") # type: ignore
 
-    features = list(map(lambda x: pd.DataFrame(computeProperties([x]), columns=column_labels), validation_set))
+# model application
+# TODO: #1 fix issue of parallel cases
+categories = ["Sequence", "Negative Confidence", "Positive Confidence", "Prediction"]
 
-    results = list(map(lambda x: xgb2.predict_proba(x), features))
+resultTable = None
+resultTable2 = None
 
-    resultList = []
-    
-    for i in range(len(results)):
-        result = 0 if results[i][0][0] > results[i][0][1] else 1
-        resultList.append([validation_set[i], results[i][0][0], results[i][0][1], result])
+if upload_file is not None:
+    resultTable = pd.DataFrame(predict_aptamers(xgb2, list(filter(lambda x: len(x) > 0, StringIO(upload_file.getvalue().decode("utf-8")).read().split("\n")))), columns=categories)
 
-    resultTable = pd.DataFrame(resultList, columns=["Sequence", "Negative Confidence", "Positive Confidence", "Prediction"])
+if len(upload_text) > 0:
+    resultTable2 = pd.DataFrame(predict_aptamers(xgb2, list(filter(lambda x: len(x) > 0, upload_text.split("\n")))), columns=categories)
 
-    st.dataframe(resultTable)
-    
+if resultTable is not None:
+    st.write(resultTable)
+
+if resultTable2 is not None:
+    st.write(resultTable2)
